@@ -1,5 +1,3 @@
-// src/app/(auth)/signup/page.tsx
-
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -10,7 +8,6 @@ import { createUserProfile, getUserByUsername } from "@/lib/firebase/services/us
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 
-// ─── Types ───────────────────────────────────────────
 interface FormData {
   fullName: string;
   email: string;
@@ -26,7 +23,6 @@ interface LocationSuggestion {
   display_name: string;
 }
 
-// ─── Password Validation ──────────────────────────────
 function validatePassword(password: string) {
   return {
     minLength: password.length >= 8,
@@ -45,7 +41,6 @@ function isUsernameFormatValid(username: string) {
   return /^[a-z0-9_.]{4,20}$/.test(username);
 }
 
-// ─── Main Component ───────────────────────────────────
 export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -62,40 +57,33 @@ export default function SignUpPage() {
     dateOfBirth: "",
   });
 
-  // Username check
-  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
+  const [usernameStatus, setUsernameStatus] = useState
+    "idle" | "checking" | "available" | "taken" | "invalid"
+  >("idle");
   const usernameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Location autocomplete
   const [locationQuery, setLocationQuery] = useState("");
   const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestion[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
-  const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Password visibility
   const [showPass, setShowPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-  // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // ── Navigate Steps ──────────────────────────────────
-  const goToStep = (next: number, dir: "forward" | "back" = "forward") => {
+  const goToStep = (next: number, dir: "forward" | "back") => {
     if (animating) return;
     setDirection(dir);
     setAnimating(true);
     setTimeout(() => {
       setStep(next);
       setAnimating(false);
-    }, 280);
+    }, 260);
   };
 
-  const handleNext = () => goToStep(step + 1, "forward");
-  const handleBack = () => goToStep(step - 1, "back");
-
-  // ── Username Live Check ──────────────────────────────
   const checkUsername = useCallback(async (val: string) => {
     if (!isUsernameFormatValid(val)) {
       setUsernameStatus("invalid");
@@ -105,22 +93,30 @@ export default function SignUpPage() {
     try {
       const existing = await getUserByUsername(val);
       setUsernameStatus(existing ? "taken" : "available");
-    } catch {
-      setUsernameStatus("idle");
+    } catch (err) {
+      console.error("Username check error:", err);
+      setUsernameStatus("available");
     }
   }, []);
 
   useEffect(() => {
     const val = form.username.trim();
-    if (!val) { setUsernameStatus("idle"); return; }
+    if (!val) {
+      setUsernameStatus("idle");
+      return;
+    }
     if (usernameTimer.current) clearTimeout(usernameTimer.current);
     usernameTimer.current = setTimeout(() => checkUsername(val), 600);
-    return () => { if (usernameTimer.current) clearTimeout(usernameTimer.current); };
+    return () => {
+      if (usernameTimer.current) clearTimeout(usernameTimer.current);
+    };
   }, [form.username, checkUsername]);
 
-  // ── Location Autocomplete ────────────────────────────
   const fetchLocations = useCallback(async (q: string) => {
-    if (q.length < 2) { setLocationSuggestions([]); return; }
+    if (q.length < 2) {
+      setLocationSuggestions([]);
+      return;
+    }
     setLocationLoading(true);
     try {
       const res = await fetch(
@@ -140,10 +136,11 @@ export default function SignUpPage() {
   useEffect(() => {
     if (locationTimer.current) clearTimeout(locationTimer.current);
     locationTimer.current = setTimeout(() => fetchLocations(locationQuery), 500);
-    return () => { if (locationTimer.current) clearTimeout(locationTimer.current); };
+    return () => {
+      if (locationTimer.current) clearTimeout(locationTimer.current);
+    };
   }, [locationQuery, fetchLocations]);
 
-  // ── Step Validation ──────────────────────────────────
   const canProceed = (): boolean => {
     switch (step) {
       case 1: return form.fullName.trim().length >= 2;
@@ -155,16 +152,13 @@ export default function SignUpPage() {
     }
   };
 
-  // ── Final Submit ─────────────────────────────────────
   const handleSubmit = async () => {
     if (submitting) return;
     setSubmitting(true);
     setSubmitError("");
     try {
-      // 1. Create Firebase Auth user
       const user = await signUpWithEmail(form.email, form.password, form.fullName);
 
-      // 2. Save user profile to Firestore
       await createUserProfile(user.uid, {
         uid: user.uid,
         email: form.email,
@@ -180,30 +174,52 @@ export default function SignUpPage() {
         fcmToken: null,
       });
 
-      // 3. Save unique username mapping
       await setDoc(doc(db, "usernames", form.username.toLowerCase()), {
         uid: user.uid,
         createdAt: serverTimestamp(),
       });
 
-      // 4. Redirect to home (server-side rendered)
       router.push("/");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
-      if (msg.includes("email-already-in-use")) {
-        setSubmitError("এই email দিয়ে আগেই account আছে।");
-      } else {
-        setSubmitError(msg);
-      }
+      setSubmitError(
+        msg.includes("email-already-in-use")
+          ? "এই email দিয়ে আগেই account আছে।"
+          : msg
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Password validation state ────────────────────────
   const passValid = validatePassword(form.password);
 
-  // ── Render ───────────────────────────────────────────
+  function EyeOpen() {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
+
+  function EyeOff() {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </svg>
+    );
+  }
+
+  function BackArrow() {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+    );
+  }
+
   return (
     <>
       <style>{`
@@ -233,116 +249,101 @@ export default function SignUpPage() {
             --shadow: 0 2px 16px rgba(0,0,0,0.35);
           }
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; background: var(--bg); }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .signup-root {
+        .su-root {
           min-height: 100dvh;
           background: var(--bg);
           display: flex;
           flex-direction: column;
-          padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+          padding-top: env(safe-area-inset-top, 0px);
+          padding-bottom: env(safe-area-inset-bottom, 0px);
           overflow: hidden;
         }
-
-        /* Top bar */
-        .signup-topbar {
+        .su-topbar {
           display: flex;
           justify-content: flex-end;
-          align-items: center;
-          padding: 16px 24px 8px;
+          padding: 16px 24px 10px;
+          flex-shrink: 0;
         }
-        .step-label {
+        .su-step-label {
           font-size: 13px;
           font-weight: 600;
           color: var(--text-secondary);
-          letter-spacing: 0.02em;
+          letter-spacing: 0.03em;
         }
-
-        /* Progress bar */
-        .progress-track {
+        .su-progress-track {
           height: 3px;
           background: var(--input-bg);
           margin: 0 24px;
           border-radius: 99px;
           overflow: hidden;
+          flex-shrink: 0;
         }
-        .progress-fill {
+        .su-progress-fill {
           height: 100%;
           background: var(--btn);
           border-radius: 99px;
-          transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
         }
-
-        /* Scroll container */
-        .signup-scroll {
+        .su-scroll {
           flex: 1;
           overflow-y: auto;
           overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
         }
-        .signup-scroll::-webkit-scrollbar { display: none; }
-
-        /* Step panel */
-        .step-panel {
-          min-height: calc(100dvh - 90px);
-          padding: 32px 24px 40px;
+        .su-scroll::-webkit-scrollbar { display: none; }
+        .su-panel {
+          min-height: calc(100dvh - 70px);
+          padding: 28px 24px 40px;
           display: flex;
           flex-direction: column;
-          will-change: transform, opacity;
-          transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.28s ease;
+          transition: transform 0.26s cubic-bezier(0.4,0,0.2,1), opacity 0.26s ease;
         }
-        .step-panel.enter-forward  { transform: translateX(0); opacity: 1; }
-        .step-panel.exit-forward   { transform: translateX(-40px); opacity: 0; }
-        .step-panel.enter-back     { transform: translateX(0); opacity: 1; }
-        .step-panel.exit-back      { transform: translateX(40px); opacity: 0; }
-        .step-panel.animating      { transform: translateX(${direction === 'forward' ? '40px' : '-40px'}); opacity: 0; }
-
-        /* Logo area */
-        .logo-area {
+        .su-panel.is-animating {
+          opacity: 0;
+          pointer-events: none;
+        }
+        .su-logo-block {
           display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 32px;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 14px;
+          margin-bottom: 36px;
         }
-        .logo-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #38BDF8 0%, #0EA5E9 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 12px rgba(56,189,248,0.35);
+        .su-logo-img {
+          width: 64px;
+          height: 64px;
+          object-fit: contain;
+          border-radius: 16px;
         }
-        .logo-text {
-          font-size: 22px;
-          font-weight: 800;
+        .su-logo-name {
+          font-size: 28px;
+          font-weight: 900;
           color: var(--text-primary);
-          letter-spacing: -0.5px;
+          letter-spacing: -0.8px;
+          line-height: 1;
         }
-        .logo-text span { color: #38BDF8; }
-
-        /* Headings */
-        .step-heading {
+        .su-logo-name span { color: #38BDF8; }
+        .su-heading {
           font-size: 26px;
           font-weight: 800;
           color: var(--text-primary);
-          line-height: 1.25;
           letter-spacing: -0.5px;
+          line-height: 1.2;
           margin-bottom: 8px;
         }
-        .step-sub {
+        .su-sub {
           font-size: 15px;
           color: var(--text-secondary);
-          margin-bottom: 32px;
           line-height: 1.5;
+          margin-bottom: 32px;
         }
-
-        /* Inputs */
-        .input-wrap { margin-bottom: 14px; }
-        .inp {
+        .su-input-wrap { margin-bottom: 14px; }
+        .su-inp {
           width: 100%;
           padding: 16px 18px;
           background: var(--input-bg);
@@ -352,138 +353,134 @@ export default function SignUpPage() {
           font-size: 16px;
           color: var(--text-primary);
           box-shadow: var(--shadow);
-          transition: background 0.2s, box-shadow 0.2s;
+          transition: box-shadow 0.2s;
           -webkit-appearance: none;
           appearance: none;
+          font-family: inherit;
         }
-        .inp::placeholder { color: var(--text-secondary); }
-        .inp:focus { box-shadow: 0 0 0 2.5px rgba(56,189,248,0.35), var(--shadow); }
-        .inp-row {
-          position: relative;
+        .su-inp::placeholder { color: var(--text-secondary); }
+        .su-inp:focus {
+          box-shadow: 0 0 0 2.5px rgba(56,189,248,0.35), var(--shadow);
         }
-        .inp-row .inp { padding-right: 52px; }
-        .eye-btn {
+        .su-inp-row { position: relative; }
+        .su-inp-row .su-inp { padding-right: 52px; }
+        .su-eye {
           position: absolute;
-          right: 16px;
+          right: 14px;
           top: 50%;
           transform: translateY(-50%);
           background: none;
           border: none;
           color: var(--text-secondary);
           cursor: pointer;
-          padding: 4px;
+          padding: 6px;
           display: flex;
           align-items: center;
-          justify-content: center;
+          -webkit-tap-highlight-color: transparent;
         }
-
-        /* Password rules */
-        .pass-rules {
+        .su-rules {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 8px;
-          margin-top: 12px;
-          margin-bottom: 4px;
+          margin-top: 10px;
         }
-        .rule {
+        .su-rule {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 7px;
           font-size: 13px;
           color: var(--text-secondary);
           transition: color 0.2s;
         }
-        .rule.ok { color: var(--success); }
-        .rule-dot {
+        .su-rule.ok { color: var(--success); }
+        .su-rule-dot {
           width: 7px; height: 7px;
           border-radius: 50%;
-          background: var(--text-secondary);
+          background: currentColor;
           flex-shrink: 0;
-          transition: background 0.2s;
         }
-        .rule.ok .rule-dot { background: var(--success); }
-
-        /* Username status */
-        .username-status {
+        .su-username-status {
           display: flex;
           align-items: center;
           gap: 6px;
           font-size: 13px;
           margin-top: 8px;
-          padding-left: 4px;
+          padding-left: 2px;
           min-height: 20px;
-          transition: opacity 0.2s;
         }
-        .username-status.available { color: var(--success); }
-        .username-status.taken { color: var(--danger); }
-        .username-status.invalid { color: var(--danger); }
-        .username-status.checking { color: var(--text-secondary); }
-
-        /* Location suggestions */
-        .location-list {
+        .su-username-status.available { color: var(--success); }
+        .su-username-status.taken,
+        .su-username-status.invalid { color: var(--danger); }
+        .su-username-status.checking { color: var(--text-secondary); }
+        .su-loc-list {
           background: var(--input-bg);
           border-radius: 14px;
           margin-top: 6px;
           overflow: hidden;
           box-shadow: var(--shadow);
         }
-        .location-item {
+        .su-loc-item {
           padding: 14px 18px;
           font-size: 14px;
           color: var(--text-primary);
           cursor: pointer;
           border-bottom: 1px solid var(--border-subtle);
-          transition: background 0.15s;
           line-height: 1.4;
+          transition: background 0.15s;
+          -webkit-tap-highlight-color: transparent;
         }
-        .location-item:last-child { border-bottom: none; }
-        .location-item:active, .location-item:hover { background: rgba(56,189,248,0.08); }
-
-        /* Date input */
-        input[type="date"].inp {
-          color: var(--text-primary);
-        }
-        input[type="date"].inp::-webkit-calendar-picker-indicator {
-          opacity: 0.5;
-          filter: invert(0.5);
+        .su-loc-item:last-child { border-bottom: none; }
+        .su-loc-item:active { background: rgba(56,189,248,0.1); }
+        input[type="date"].su-inp { color: var(--text-primary); }
+        input[type="date"].su-inp::-webkit-calendar-picker-indicator {
+          opacity: 0.45;
           cursor: pointer;
         }
-
-        /* Summary card */
-        .summary-rows { margin-bottom: 32px; }
-        .summary-row {
+        .su-summary { margin-bottom: 32px; }
+        .su-summary-row {
           display: flex;
           flex-direction: column;
+          gap: 3px;
           padding: 14px 0;
           border-bottom: 1px solid var(--border-subtle);
         }
-        .summary-row:first-child { border-top: 1px solid var(--border-subtle); }
-        .summary-label {
-          font-size: 12px;
-          font-weight: 600;
+        .su-summary-row:first-child { border-top: 1px solid var(--border-subtle); }
+        .su-summary-label {
+          font-size: 11px;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.07em;
           color: var(--text-secondary);
-          margin-bottom: 3px;
         }
-        .summary-value {
+        .su-summary-value {
           font-size: 16px;
-          color: var(--text-primary);
           font-weight: 500;
+          color: var(--text-primary);
         }
-
-        /* Error */
-        .error-msg {
+        .su-error {
           color: var(--danger);
           font-size: 13px;
-          margin-bottom: 12px;
           padding: 10px 14px;
           background: rgba(239,68,68,0.08);
           border-radius: 10px;
+          margin-bottom: 14px;
         }
-
-        /* Buttons */
-        .btn-primary {
+        .su-back {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          margin-bottom: 28px;
+          -webkit-tap-highlight-color: transparent;
+          font-family: inherit;
+        }
+        .su-btn {
           width: 100%;
           padding: 17px;
           background: var(--btn);
@@ -493,91 +490,77 @@ export default function SignUpPage() {
           border: none;
           border-radius: 99px;
           cursor: pointer;
-          box-shadow: 0 4px 16px rgba(56,189,248,0.4);
+          box-shadow: 0 4px 18px rgba(56,189,248,0.38);
           transition: opacity 0.2s, transform 0.15s;
           -webkit-tap-highlight-color: transparent;
+          font-family: inherit;
           letter-spacing: 0.01em;
-        }
-        .btn-primary:disabled {
-          opacity: 0.38;
-          cursor: not-allowed;
-          box-shadow: none;
-          transform: none;
-        }
-        .btn-primary:not(:disabled):active { transform: scale(0.98); }
-
-        .btn-back {
-          background: none;
-          border: none;
-          color: var(--text-secondary);
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          padding: 12px 0;
-          margin-bottom: 12px;
           display: flex;
           align-items: center;
-          gap: 6px;
-          -webkit-tap-highlight-color: transparent;
+          justify-content: center;
+          gap: 8px;
         }
-
-        /* Spacer */
-        .spacer { flex: 1; }
-
-        /* Spinner */
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spinner {
-          width: 20px; height: 20px;
+        .su-btn:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .su-btn:not(:disabled):active { transform: scale(0.98); }
+        .su-spinner {
+          width: 18px; height: 18px;
           border: 2px solid rgba(255,255,255,0.4);
           border-top-color: white;
           border-radius: 50%;
           animation: spin 0.7s linear infinite;
-          display: inline-block;
-          vertical-align: middle;
-          margin-right: 8px;
+          flex-shrink: 0;
         }
-
-        @keyframes checkDot {
-          from { transform: scale(0.5); opacity:0; }
-          to   { transform: scale(1);   opacity:1; }
+        .su-spacer { flex: 1; min-height: 24px; }
+        .su-field-label {
+          font-size: 13px;
+          color: var(--text-secondary);
+          padding-left: 2px;
+          display: block;
+          margin-bottom: 6px;
+          font-weight: 500;
+        }
+        .su-pass-mismatch {
+          color: var(--danger);
+          font-size: 13px;
+          margin-top: 6px;
+          padding-left: 2px;
         }
       `}</style>
 
-      <div className="signup-root">
-        {/* Top bar */}
-        <div className="signup-topbar">
-          <span className="step-label">Step {step} of 6</span>
+      <div className="su-root">
+        <div className="su-topbar">
+          <span className="su-step-label">Step {step} of 6</span>
+        </div>
+        <div className="su-progress-track">
+          <div className="su-progress-fill" style={{ width: `${(step / 6) * 100}%` }} />
         </div>
 
-        {/* Progress bar */}
-        <div className="progress-track">
-          <div className="progress-fill" style={{ width: `${(step / 6) * 100}%` }} />
-        </div>
+        <div className="su-scroll">
+          <div className={`su-panel${animating ? " is-animating" : ""}`}>
 
-        {/* Scrollable area */}
-        <div className="signup-scroll">
-          <div className={`step-panel ${animating ? "animating" : ""}`}>
-
-            {/* ── STEP 1: Full Name ── */}
+            {/* STEP 1 */}
             {step === 1 && (
               <>
-                <div className="logo-area">
-                  <div className="logo-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 2L2 7l10 5 10-5-10-5z" fill="white" opacity="0.9"/>
-                      <path d="M2 17l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div className="logo-text">Sky<span>Link</span></div>
+                <div className="su-logo-block">
+                  <Image
+                    src="/logo.png"
+                    alt="SkyLink Logo"
+                    width={64}
+                    height={64}
+                    priority
+                    className="su-logo-img"
+                  />
+                  <div className="su-logo-name">Sky<span>Link</span></div>
                 </div>
-
-                <div className="step-heading">Create your account</div>
-                <div className="step-sub">Let&apos;s get started with your basic info.</div>
-
-                <div className="input-wrap">
+                <div className="su-heading">Create your account</div>
+                <div className="su-sub">Let&apos;s get started with your basic info.</div>
+                <div className="su-input-wrap">
                   <input
-                    className="inp"
+                    className="su-inp"
                     type="text"
                     placeholder="Full Name"
                     autoComplete="name"
@@ -586,34 +569,22 @@ export default function SignUpPage() {
                     autoFocus
                   />
                 </div>
-
-                <div className="spacer" />
-                <button
-                  className="btn-primary"
-                  disabled={!canProceed()}
-                  onClick={handleNext}
-                >
+                <div className="su-spacer" />
+                <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(2, "forward")}>
                   Next
                 </button>
               </>
             )}
 
-            {/* ── STEP 2: Email ── */}
+            {/* STEP 2 */}
             {step === 2 && (
               <>
-                <button className="btn-back" onClick={handleBack}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Back
-                </button>
-
-                <div className="step-heading">What&apos;s your email?</div>
-                <div className="step-sub">You&apos;ll use this to log in.</div>
-
-                <div className="input-wrap">
+                <button className="su-back" onClick={() => goToStep(1, "back")}><BackArrow /> Back</button>
+                <div className="su-heading">What&apos;s your email?</div>
+                <div className="su-sub">You&apos;ll use this to log in.</div>
+                <div className="su-input-wrap">
                   <input
-                    className="inp"
+                    className="su-inp"
                     type="email"
                     placeholder="Email Address"
                     autoComplete="email"
@@ -623,35 +594,23 @@ export default function SignUpPage() {
                     autoFocus
                   />
                 </div>
-
-                <div className="spacer" />
-                <button
-                  className="btn-primary"
-                  disabled={!canProceed()}
-                  onClick={handleNext}
-                >
+                <div className="su-spacer" />
+                <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(3, "forward")}>
                   Next
                 </button>
               </>
             )}
 
-            {/* ── STEP 3: Password ── */}
+            {/* STEP 3 */}
             {step === 3 && (
               <>
-                <button className="btn-back" onClick={handleBack}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Back
-                </button>
-
-                <div className="step-heading">Create a password</div>
-                <div className="step-sub">Make sure it&apos;s strong and secure.</div>
-
-                <div className="input-wrap">
-                  <div className="inp-row">
+                <button className="su-back" onClick={() => goToStep(2, "back")}><BackArrow /> Back</button>
+                <div className="su-heading">Create a password</div>
+                <div className="su-sub">Make sure it&apos;s strong and secure.</div>
+                <div className="su-input-wrap">
+                  <div className="su-inp-row">
                     <input
-                      className="inp"
+                      className="su-inp"
                       type={showPass ? "text" : "password"}
                       placeholder="Password"
                       autoComplete="new-password"
@@ -659,140 +618,91 @@ export default function SignUpPage() {
                       onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                       autoFocus
                     />
-                    <button className="eye-btn" type="button" onClick={() => setShowPass(v => !v)} aria-label="Toggle password visibility">
-                      {showPass
-                        ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      }
+                    <button className="su-eye" type="button" onClick={() => setShowPass(v => !v)}>
+                      {showPass ? <EyeOff /> : <EyeOpen />}
                     </button>
                   </div>
                 </div>
-
-                <div className="input-wrap">
-                  <div className="inp-row">
+                <div className="su-input-wrap">
+                  <div className="su-inp-row">
                     <input
-                      className="inp"
+                      className="su-inp"
                       type={showConfirmPass ? "text" : "password"}
                       placeholder="Confirm Password"
                       autoComplete="new-password"
                       value={form.confirmPassword}
                       onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
                     />
-                    <button className="eye-btn" type="button" onClick={() => setShowConfirmPass(v => !v)} aria-label="Toggle confirm password visibility">
-                      {showConfirmPass
-                        ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                      }
+                    <button className="su-eye" type="button" onClick={() => setShowConfirmPass(v => !v)}>
+                      {showConfirmPass ? <EyeOff /> : <EyeOpen />}
                     </button>
                   </div>
                 </div>
-
-                {/* Password rules */}
-                <div className="pass-rules">
-                  <div className={`rule ${passValid.minLength ? "ok" : ""}`}>
-                    <div className="rule-dot" />
-                    8+ Characters
-                  </div>
-                  <div className={`rule ${passValid.uppercase ? "ok" : ""}`}>
-                    <div className="rule-dot" />
-                    1 Uppercase
-                  </div>
-                  <div className={`rule ${passValid.lowercase ? "ok" : ""}`}>
-                    <div className="rule-dot" />
-                    1 Lowercase
-                  </div>
-                  <div className={`rule ${passValid.number ? "ok" : ""}`}>
-                    <div className="rule-dot" />
-                    1 Number
-                  </div>
+                <div className="su-rules">
+                  <div className={`su-rule${passValid.minLength ? " ok" : ""}`}><div className="su-rule-dot" /> 8+ Characters</div>
+                  <div className={`su-rule${passValid.uppercase ? " ok" : ""}`}><div className="su-rule-dot" /> 1 Uppercase</div>
+                  <div className={`su-rule${passValid.lowercase ? " ok" : ""}`}><div className="su-rule-dot" /> 1 Lowercase</div>
+                  <div className={`su-rule${passValid.number ? " ok" : ""}`}><div className="su-rule-dot" /> 1 Number</div>
                 </div>
-
                 {form.confirmPassword && form.password !== form.confirmPassword && (
-                  <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 8, paddingLeft: 4 }}>
-                    Passwords do not match.
-                  </p>
+                  <p className="su-pass-mismatch">Passwords do not match.</p>
                 )}
-
-                <div className="spacer" />
-                <button
-                  className="btn-primary"
-                  disabled={!canProceed()}
-                  onClick={handleNext}
-                >
+                <div className="su-spacer" />
+                <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(4, "forward")}>
                   Next
                 </button>
               </>
             )}
 
-            {/* ── STEP 4: Username ── */}
+            {/* STEP 4 */}
             {step === 4 && (
               <>
-                <button className="btn-back" onClick={handleBack}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Back
-                </button>
-
-                <div className="step-heading">Choose your username</div>
-                <div className="step-sub">This will be your unique identity.</div>
-
-                <div className="input-wrap">
+                <button className="su-back" onClick={() => goToStep(3, "back")}><BackArrow /> Back</button>
+                <div className="su-heading">Choose your username</div>
+                <div className="su-sub">This will be your unique identity.</div>
+                <div className="su-input-wrap">
                   <input
-                    className="inp"
+                    className="su-inp"
                     type="text"
-                    placeholder="Username"
-                    autoComplete="username"
+                    placeholder="username"
+                    autoComplete="off"
                     autoCapitalize="none"
                     spellCheck={false}
                     value={form.username}
                     onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase() }))}
                     autoFocus
                   />
-                  <div className={`username-status ${usernameStatus}`}>
+                  <div className={`su-username-status ${usernameStatus}`}>
                     {usernameStatus === "checking" && (
-                      <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 0.7s linear infinite" }}><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg> Checking…</>
+                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 0.7s linear infinite" }}><path d="M21 12a9 9 0 1 1-6.22-8.56" /></svg> Checking…</>
                     )}
                     {usernameStatus === "available" && (
-                      <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> Username Available</>
+                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg> Username Available</>
                     )}
                     {usernameStatus === "taken" && (
-                      <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Username Already Taken</>
+                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg> Username Already Taken</>
                     )}
                     {usernameStatus === "invalid" && form.username && (
-                      <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Only a–z, 0–9, _ or . (4–20 chars)</>
+                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg> Only a–z, 0–9, _ or . (4–20 chars)</>
                     )}
                   </div>
                 </div>
-
-                <div className="spacer" />
-                <button
-                  className="btn-primary"
-                  disabled={!canProceed()}
-                  onClick={handleNext}
-                >
+                <div className="su-spacer" />
+                <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(5, "forward")}>
                   Next
                 </button>
               </>
             )}
 
-            {/* ── STEP 5: Location + DOB ── */}
+            {/* STEP 5 */}
             {step === 5 && (
               <>
-                <button className="btn-back" onClick={handleBack}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Back
-                </button>
-
-                <div className="step-heading">Where are you from?</div>
-                <div className="step-sub">Help people find you.</div>
-
-                {/* Location search */}
-                <div className="input-wrap">
+                <button className="su-back" onClick={() => goToStep(4, "back")}><BackArrow /> Back</button>
+                <div className="su-heading">Where are you from?</div>
+                <div className="su-sub">Help people find you.</div>
+                <div className="su-input-wrap">
                   <input
-                    className="inp"
+                    className="su-inp"
                     type="text"
                     placeholder="Search location…"
                     autoComplete="off"
@@ -807,14 +717,14 @@ export default function SignUpPage() {
                     autoFocus
                   />
                   {locationLoading && (
-                    <p style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 6, paddingLeft: 4 }}>Searching…</p>
+                    <p style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 6, paddingLeft: 2 }}>Searching…</p>
                   )}
                   {showSuggestions && locationSuggestions.length > 0 && (
-                    <div className="location-list">
+                    <div className="su-loc-list">
                       {locationSuggestions.map(s => (
                         <div
                           key={s.place_id}
-                          className="location-item"
+                          className="su-loc-item"
                           onClick={() => {
                             setForm(f => ({ ...f, location: s.display_name }));
                             setLocationQuery(s.display_name);
@@ -827,44 +737,30 @@ export default function SignUpPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Date of Birth */}
-                <div className="input-wrap" style={{ marginTop: 8 }}>
-                  <label style={{ fontSize: 13, color: "var(--text-secondary)", paddingLeft: 4, display: "block", marginBottom: 6 }}>Date of Birth</label>
+                <div className="su-input-wrap" style={{ marginTop: 4 }}>
+                  <label className="su-field-label">Date of Birth</label>
                   <input
-                    className="inp"
+                    className="su-inp"
                     type="date"
                     value={form.dateOfBirth}
                     max={new Date(Date.now() - 13 * 365.25 * 24 * 3600 * 1000).toISOString().split("T")[0]}
                     onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))}
                   />
                 </div>
-
-                <div className="spacer" />
-                <button
-                  className="btn-primary"
-                  disabled={!canProceed()}
-                  onClick={handleNext}
-                >
+                <div className="su-spacer" />
+                <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(6, "forward")}>
                   Next
                 </button>
               </>
             )}
 
-            {/* ── STEP 6: Summary ── */}
+            {/* STEP 6 */}
             {step === 6 && (
               <>
-                <button className="btn-back" onClick={handleBack}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  Back
-                </button>
-
-                <div className="step-heading">Almost done!</div>
-                <div className="step-sub">Review your info before creating your account.</div>
-
-                <div className="summary-rows">
+                <button className="su-back" onClick={() => goToStep(5, "back")}><BackArrow /> Back</button>
+                <div className="su-heading">Almost done!</div>
+                <div className="su-sub">Review your info before creating your account.</div>
+                <div className="su-summary">
                   {[
                     { label: "Full Name", value: form.fullName },
                     { label: "Email", value: form.email },
@@ -872,25 +768,15 @@ export default function SignUpPage() {
                     { label: "Location", value: form.location },
                     { label: "Date of Birth", value: form.dateOfBirth },
                   ].map(row => (
-                    <div className="summary-row" key={row.label}>
-                      <span className="summary-label">{row.label}</span>
-                      <span className="summary-value">{row.value}</span>
+                    <div className="su-summary-row" key={row.label}>
+                      <span className="su-summary-label">{row.label}</span>
+                      <span className="su-summary-value">{row.value}</span>
                     </div>
                   ))}
                 </div>
-
-                {submitError && (
-                  <div className="error-msg">{submitError}</div>
-                )}
-
-                <button
-                  className="btn-primary"
-                  disabled={submitting}
-                  onClick={handleSubmit}
-                >
-                  {submitting ? (
-                    <><span className="spinner" />Creating Account…</>
-                  ) : "Create Account"}
+                {submitError && <div className="su-error">{submitError}</div>}
+                <button className="su-btn" disabled={submitting} onClick={handleSubmit}>
+                  {submitting ? <><div className="su-spinner" /> Creating Account…</> : "Create Account"}
                 </button>
               </>
             )}
