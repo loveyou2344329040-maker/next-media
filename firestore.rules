@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    // ── USERS ──────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && isOwner(userId);
+      allow update: if isAuth() && isOwner(userId);
+      allow delete: if false;
+
+      match /followers/{followerId} {
+        allow read: if isAuth();
+        allow write: if isAuth() && request.auth.uid == followerId;
+        allow delete: if isAuth() && request.auth.uid == followerId;
+      }
+
+      match /following/{followingId} {
+        allow read: if isAuth();
+        allow write: if isAuth() && isOwner(userId);
+        allow delete: if isAuth() && isOwner(userId);
+      }
+    }
+
+    // ── POSTS ──────────────────────────────────────
+    match /posts/{postId} {
+      allow read: if isAuth() &&
+        (resource.data.isPublic == true || isOwner(resource.data.authorId));
+      allow create: if isAuth() &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.content.size() <= 2000;
+      allow update: if isAuth() && isOwner(resource.data.authorId);
+      allow delete: if isAuth() && isOwner(resource.data.authorId);
+    }
+
+    // ── COMMENTS ───────────────────────────────────
+    match /comments/{commentId} {
+      allow read: if isAuth();
+      allow create: if isAuth() &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.content.size() <= 500;
+      allow update: if isAuth() && isOwner(resource.data.authorId);
+      allow delete: if isAuth() && isOwner(resource.data.authorId);
+    }
+
+    // ── LIKES ──────────────────────────────────────
+    match /likes/{likeId} {
+      allow read: if isAuth();
+      allow create: if isAuth() &&
+        request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuth() &&
+        resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ── NOTIFICATIONS ──────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isAuth() &&
+        resource.data.recipientId == request.auth.uid;
+      allow create: if isAuth();
+      allow update: if isAuth() &&
+        resource.data.recipientId == request.auth.uid &&
+        request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['isRead']);
+      allow delete: if isAuth() &&
+        resource.data.recipientId == request.auth.uid;
+    }
+  }
+}
