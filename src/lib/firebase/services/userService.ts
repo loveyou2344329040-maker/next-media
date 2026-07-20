@@ -55,13 +55,17 @@ export const updateUserProfile = async (
 export const getUserByUsername = async (
   username: string
 ): Promise<UserProfile | null> => {
-  const q = query(
-    collection(db, COL),
-    where("username", "==", username),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  return snap.empty ? null : (snap.docs[0].data() as UserProfile);
+  try {
+    const q = query(
+      collection(db, COL),
+      where("username", "==", username),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    return snap.empty ? null : (snap.docs[0].data() as UserProfile);
+  } catch {
+    return null;
+  }
 };
 
 export const searchUsers = async (term: string): Promise<UserProfile[]> => {
@@ -79,16 +83,20 @@ export const followUser = async (
   currentUserId: string,
   targetUserId: string
 ): Promise<void> => {
-  await setDoc(
-    doc(db, COL, currentUserId, "following", targetUserId),
-    { userId: targetUserId, createdAt: serverTimestamp() }
-  );
-  await setDoc(
-    doc(db, COL, targetUserId, "followers", currentUserId),
-    { userId: currentUserId, createdAt: serverTimestamp() }
-  );
-  await updateDoc(doc(db, COL, currentUserId), { followingCount: increment(1) });
-  await updateDoc(doc(db, COL, targetUserId), { followersCount: increment(1) });
+  await setDoc(doc(db, COL, currentUserId, "following", targetUserId), {
+    userId: targetUserId,
+    createdAt: serverTimestamp(),
+  });
+  await setDoc(doc(db, COL, targetUserId, "followers", currentUserId), {
+    userId: currentUserId,
+    createdAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, COL, currentUserId), {
+    followingCount: increment(1),
+  });
+  await updateDoc(doc(db, COL, targetUserId), {
+    followersCount: increment(1),
+  });
 };
 
 export const unfollowUser = async (
@@ -97,8 +105,12 @@ export const unfollowUser = async (
 ): Promise<void> => {
   await deleteDoc(doc(db, COL, currentUserId, "following", targetUserId));
   await deleteDoc(doc(db, COL, targetUserId, "followers", currentUserId));
-  await updateDoc(doc(db, COL, currentUserId), { followingCount: increment(-1) });
-  await updateDoc(doc(db, COL, targetUserId), { followersCount: increment(-1) });
+  await updateDoc(doc(db, COL, currentUserId), {
+    followingCount: increment(-1),
+  });
+  await updateDoc(doc(db, COL, targetUserId), {
+    followersCount: increment(-1),
+  });
 };
 
 export const isFollowing = async (
