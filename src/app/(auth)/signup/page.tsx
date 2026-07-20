@@ -4,8 +4,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
+
+type UsernameStatus = "idle" | "checking" | "available" | "taken" | "invalid";
 
 interface FormData {
   fullName: string;
@@ -42,8 +52,8 @@ function isUsernameFormatValid(username: string) {
 
 export default function SignUpPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [animating, setAnimating] = useState(false);
+  const [step, setStep] = useState<number>(1);
+  const [animating, setAnimating] = useState<boolean>(false);
 
   const [form, setForm] = useState<FormData>({
     fullName: "",
@@ -55,22 +65,20 @@ export default function SignUpPage() {
     dateOfBirth: "",
   });
 
-  const [usernameStatus, setUsernameStatus] = useState
-    "idle" | "checking" | "available" | "taken" | "invalid"
-  >("idle");
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
   const usernameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [locationQuery, setLocationQuery] = useState("");
+  const [locationQuery, setLocationQuery] = useState<string>("");
   const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestion[]>([]);
-  const [locationLoading, setLocationLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [locationLoading, setLocationLoading] = useState<boolean>(false);
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [showPass, setShowPass] = useState(false);
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [showPass, setShowPass] = useState<boolean>(false);
+  const [showConfirmPass, setShowConfirmPass] = useState<boolean>(false);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string>("");
 
   const goToStep = (next: number, _dir: "forward" | "back") => {
     if (animating) return;
@@ -543,7 +551,6 @@ export default function SignUpPage() {
         <div className="su-scroll">
           <div className={`su-panel${animating ? " is-animating" : ""}`}>
 
-            {/* STEP 1 */}
             {step === 1 && (
               <>
                 <div className="su-logo-block">
@@ -577,7 +584,6 @@ export default function SignUpPage() {
               </>
             )}
 
-            {/* STEP 2 */}
             {step === 2 && (
               <>
                 <button className="su-back" onClick={() => goToStep(1, "back")}><BackArrow /> Back</button>
@@ -602,7 +608,6 @@ export default function SignUpPage() {
               </>
             )}
 
-            {/* STEP 3 */}
             {step === 3 && (
               <>
                 <button className="su-back" onClick={() => goToStep(2, "back")}><BackArrow /> Back</button>
@@ -655,7 +660,6 @@ export default function SignUpPage() {
               </>
             )}
 
-            {/* STEP 4 */}
             {step === 4 && (
               <>
                 <button className="su-back" onClick={() => goToStep(3, "back")}><BackArrow /> Back</button>
@@ -715,7 +719,6 @@ export default function SignUpPage() {
               </>
             )}
 
-            {/* STEP 5 */}
             {step === 5 && (
               <>
                 <button className="su-back" onClick={() => goToStep(4, "back")}><BackArrow /> Back</button>
@@ -775,7 +778,6 @@ export default function SignUpPage() {
               </>
             )}
 
-            {/* STEP 6 */}
             {step === 6 && (
               <>
                 <button className="su-back" onClick={() => goToStep(5, "back")}><BackArrow /> Back</button>
