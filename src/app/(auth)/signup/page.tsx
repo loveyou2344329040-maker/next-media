@@ -16,6 +16,7 @@ import {
 import { auth, db } from "@/lib/firebase/config";
 
 type UsernameStatus = "idle" | "checking" | "available" | "taken" | "invalid";
+type AnimState = "idle" | "exit-forward" | "exit-back" | "enter-forward" | "enter-back";
 
 interface FormData {
   fullName: string;
@@ -53,7 +54,7 @@ function isUsernameFormatValid(username: string) {
 export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState<number>(1);
-  const [animating, setAnimating] = useState<boolean>(false);
+  const [animState, setAnimState] = useState<AnimState>("idle");
 
   const [form, setForm] = useState<FormData>({
     fullName: "",
@@ -80,13 +81,14 @@ export default function SignUpPage() {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string>("");
 
-  const goToStep = (next: number, _dir: "forward" | "back") => {
-    if (animating) return;
-    setAnimating(true);
+  const goToStep = (next: number, dir: "forward" | "back") => {
+    if (animState !== "idle") return;
+    setAnimState(dir === "forward" ? "exit-forward" : "exit-back");
     setTimeout(() => {
       setStep(next);
-      setAnimating(false);
-    }, 260);
+      setAnimState(dir === "forward" ? "enter-forward" : "enter-back");
+      setTimeout(() => setAnimState("idle"), 300);
+    }, 220);
   };
 
   const checkUsername = useCallback(async (val: string) => {
@@ -254,21 +256,39 @@ export default function SignUpPage() {
         }
         @media (prefers-color-scheme: dark) {
           :root {
-            --bg: #0F172A;
-            --text-primary: #F1F5F9;
-            --text-secondary: #94A3B8;
-            --input-bg: #1E293B;
+            --bg: #03070F;
+            --text-primary: #E8F0FA;
+            --text-secondary: #6B7E96;
+            --input-bg: #09111E;
             --btn: #38BDF8;
             --btn-text: #ffffff;
-            --border-subtle: #334155;
+            --border-subtle: #0F1E30;
             --success: #4ADE80;
             --danger: #F87171;
-            --shadow: 0 2px 16px rgba(0,0,0,0.35);
+            --shadow: 0 2px 20px rgba(0,0,0,0.7);
           }
         }
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; background: var(--bg); }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes slideOutLeft {
+          from { transform: translateX(0);    opacity: 1; }
+          to   { transform: translateX(-32px); opacity: 0; }
+        }
+        @keyframes slideOutRight {
+          from { transform: translateX(0);   opacity: 1; }
+          to   { transform: translateX(32px); opacity: 0; }
+        }
+        @keyframes slideInFromRight {
+          from { transform: translateX(44px); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        @keyframes slideInFromLeft {
+          from { transform: translateX(-44px); opacity: 0; }
+          to   { transform: translateX(0);     opacity: 1; }
+        }
+
         .su-root {
           min-height: 100dvh;
           background: var(--bg);
@@ -278,10 +298,31 @@ export default function SignUpPage() {
           padding-bottom: env(safe-area-inset-bottom, 0px);
           overflow: hidden;
         }
+        .su-brand-top {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 20px 24px 4px;
+          flex-shrink: 0;
+        }
+        .su-logo-img {
+          width: 36px;
+          height: 36px;
+          object-fit: contain;
+          border-radius: 10px;
+        }
+        .su-logo-name {
+          font-size: 22px;
+          font-weight: 900;
+          color: var(--text-primary);
+          letter-spacing: -0.6px;
+          line-height: 1;
+        }
+        .su-logo-name span { color: #38BDF8; }
         .su-topbar {
           display: flex;
           justify-content: flex-end;
-          padding: 16px 24px 10px;
+          padding: 10px 24px 10px;
           flex-shrink: 0;
         }
         .su-step-label {
@@ -313,34 +354,15 @@ export default function SignUpPage() {
         }
         .su-scroll::-webkit-scrollbar { display: none; }
         .su-panel {
-          min-height: calc(100dvh - 70px);
+          min-height: calc(100dvh - 110px);
           padding: 28px 24px 40px;
           display: flex;
           flex-direction: column;
-          transition: opacity 0.26s ease;
         }
-        .su-panel.is-animating { opacity: 0; pointer-events: none; }
-        .su-logo-block {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 14px;
-          margin-bottom: 36px;
-        }
-        .su-logo-img {
-          width: 64px;
-          height: 64px;
-          object-fit: contain;
-          border-radius: 16px;
-        }
-        .su-logo-name {
-          font-size: 28px;
-          font-weight: 900;
-          color: var(--text-primary);
-          letter-spacing: -0.8px;
-          line-height: 1;
-        }
-        .su-logo-name span { color: #38BDF8; }
+        .su-panel.exit-forward  { animation: slideOutLeft     0.22s ease                              forwards; pointer-events: none; }
+        .su-panel.exit-back     { animation: slideOutRight     0.22s ease                              forwards; pointer-events: none; }
+        .su-panel.enter-forward { animation: slideInFromRight  0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+        .su-panel.enter-back    { animation: slideInFromLeft   0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
         .su-heading {
           font-size: 26px;
           font-weight: 800;
@@ -541,6 +563,19 @@ export default function SignUpPage() {
       `}</style>
 
       <div className="su-root">
+
+        <div className="su-brand-top">
+          <Image
+            src="/logo.png"
+            alt="SkyLink Logo"
+            width={36}
+            height={36}
+            priority
+            className="su-logo-img"
+          />
+          <div className="su-logo-name">Sky<span>Link</span></div>
+        </div>
+
         <div className="su-topbar">
           <span className="su-step-label">Step {step} of 6</span>
         </div>
@@ -549,21 +584,10 @@ export default function SignUpPage() {
         </div>
 
         <div className="su-scroll">
-          <div className={`su-panel${animating ? " is-animating" : ""}`}>
+          <div className={`su-panel${animState !== "idle" ? ` ${animState}` : ""}`}>
 
             {step === 1 && (
               <>
-                <div className="su-logo-block">
-                  <Image
-                    src="/logo.png"
-                    alt="SkyLink Logo"
-                    width={64}
-                    height={64}
-                    priority
-                    className="su-logo-img"
-                  />
-                  <div className="su-logo-name">Sky<span>Link</span></div>
-                </div>
                 <div className="su-heading">Create your account</div>
                 <div className="su-sub">Let&apos;s get started with your basic info.</div>
                 <div className="su-input-wrap">
