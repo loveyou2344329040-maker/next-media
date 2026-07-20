@@ -98,7 +98,10 @@ export const subscribeToMessages = (
 
   const listener = onValue(q, (snap) => {
     const msgs: Message[] = [];
-    snap.forEach((child) => msgs.push(child.val() as Message));
+    snap.forEach((child) => {
+      msgs.push(child.val() as Message);
+      return false; // ← এটাই fix, forEach-এ boolean return করতে হয়
+    });
     callback(msgs);
   });
 
@@ -116,6 +119,7 @@ export const subscribeToChatRooms = (
     snap.forEach((child) => {
       const data = child.val() as ChatRoom;
       if (data.participantsMap?.[userId]) chats.push(data);
+      return false; // ← fix
     });
     chats.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
     callback(chats);
