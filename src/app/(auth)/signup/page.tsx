@@ -51,6 +51,32 @@ function isUsernameFormatValid(username: string) {
   return /^[a-z0-9_.]{4,20}$/.test(username);
 }
 
+function isAtLeast13(dob: string): boolean {
+  if (!dob) return false;
+  const parts = dob.split("/");
+  if (parts.length !== 3) return false;
+  const [day, month, year] = parts.map(Number);
+  if (!day || !month || !year || year < 1900 || year > 9999) return false;
+  const birthDate = new Date(year, month - 1, day);
+  if (
+    birthDate.getFullYear() !== year ||
+    birthDate.getMonth() !== month - 1 ||
+    birthDate.getDate() !== day
+  ) return false;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+  return age >= 13;
+}
+
+function formatDOBInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
 export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState<number>(1);
@@ -65,6 +91,9 @@ export default function SignUpPage() {
     location: "",
     dateOfBirth: "",
   });
+
+  const [dobRaw, setDobRaw] = useState<string>("");
+  const [dobError, setDobError] = useState<string>("");
 
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
   const usernameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,6 +181,23 @@ export default function SignUpPage() {
     };
   }, [locationQuery, fetchLocations]);
 
+  const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatDOBInput(e.target.value);
+    setDobRaw(formatted);
+    setDobError("");
+
+    if (formatted.length === 10) {
+      if (!isAtLeast13(formatted)) {
+        setDobError("১৩ বছরের কম বয়সে account তৈরি করা যাবে না।");
+        setForm(f => ({ ...f, dateOfBirth: "" }));
+      } else {
+        setForm(f => ({ ...f, dateOfBirth: formatted }));
+      }
+    } else {
+      setForm(f => ({ ...f, dateOfBirth: "" }));
+    }
+  };
+
   const canProceed = (): boolean => {
     switch (step) {
       case 1: return form.fullName.trim().length >= 2;
@@ -213,6 +259,14 @@ export default function SignUpPage() {
 
   const passValid = validatePassword(form.password);
 
+  const panelClass = {
+    "idle":          "",
+    "exit-forward":  "is-exit-forward",
+    "exit-back":     "is-exit-back",
+    "enter-forward": "is-enter-forward",
+    "enter-back":    "is-enter-back",
+  }[animState];
+
   function EyeOpen() {
     return (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -271,13 +325,12 @@ export default function SignUpPage() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; background: var(--bg); }
         @keyframes spin { to { transform: rotate(360deg); } }
-
         @keyframes slideOutLeft {
-          from { transform: translateX(0);    opacity: 1; }
+          from { transform: translateX(0);     opacity: 1; }
           to   { transform: translateX(-32px); opacity: 0; }
         }
         @keyframes slideOutRight {
-          from { transform: translateX(0);   opacity: 1; }
+          from { transform: translateX(0);    opacity: 1; }
           to   { transform: translateX(32px); opacity: 0; }
         }
         @keyframes slideInFromRight {
@@ -288,7 +341,6 @@ export default function SignUpPage() {
           from { transform: translateX(-44px); opacity: 0; }
           to   { transform: translateX(0);     opacity: 1; }
         }
-
         .su-root {
           min-height: 100dvh;
           background: var(--bg);
@@ -300,29 +352,30 @@ export default function SignUpPage() {
         }
         .su-brand-top {
           display: flex;
+          flex-direction: column;
           align-items: center;
           gap: 10px;
-          padding: 20px 24px 4px;
+          padding: 48px 24px 4px;
           flex-shrink: 0;
         }
         .su-logo-img {
-          width: 36px;
-          height: 36px;
+          width: 56px;
+          height: 56px;
           object-fit: contain;
-          border-radius: 10px;
+          border-radius: 14px;
         }
         .su-logo-name {
-          font-size: 22px;
-          font-weight: 900;
+          font-size: 26px;
+          font-weight: 700;
           color: var(--text-primary);
-          letter-spacing: -0.6px;
+          letter-spacing: -0.3px;
           line-height: 1;
         }
         .su-logo-name span { color: #38BDF8; }
         .su-topbar {
           display: flex;
           justify-content: flex-end;
-          padding: 10px 24px 10px;
+          padding: 14px 24px 10px;
           flex-shrink: 0;
         }
         .su-step-label {
@@ -354,20 +407,28 @@ export default function SignUpPage() {
         }
         .su-scroll::-webkit-scrollbar { display: none; }
         .su-panel {
-          min-height: calc(100dvh - 110px);
-          padding: 28px 24px 40px;
+          min-height: calc(100dvh - 160px);
+          padding: 36px 24px 40px;
           display: flex;
           flex-direction: column;
         }
-        .su-panel.exit-forward  { animation: slideOutLeft     0.22s ease                              forwards; pointer-events: none; }
-        .su-panel.exit-back     { animation: slideOutRight     0.22s ease                              forwards; pointer-events: none; }
-        .su-panel.enter-forward { animation: slideInFromRight  0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
-        .su-panel.enter-back    { animation: slideInFromLeft   0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+        .su-panel.is-exit-forward  { animation: slideOutLeft    0.22s ease                               forwards; pointer-events: none; }
+        .su-panel.is-exit-back     { animation: slideOutRight   0.22s ease                               forwards; pointer-events: none; }
+        .su-panel.is-enter-forward { animation: slideInFromRight 0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
+        .su-panel.is-enter-back    { animation: slideInFromLeft  0.30s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
         .su-heading {
           font-size: 26px;
           font-weight: 800;
           color: var(--text-primary);
           letter-spacing: -0.5px;
+          line-height: 1.2;
+          margin-bottom: 8px;
+        }
+        .su-heading-light {
+          font-size: 26px;
+          font-weight: 600;
+          color: var(--text-primary);
+          letter-spacing: -0.3px;
           line-height: 1.2;
           margin-bottom: 8px;
         }
@@ -465,10 +526,12 @@ export default function SignUpPage() {
         }
         .su-loc-item:last-child { border-bottom: none; }
         .su-loc-item:active { background: rgba(56,189,248,0.1); }
-        input[type="date"].su-inp { color: var(--text-primary); }
-        input[type="date"].su-inp::-webkit-calendar-picker-indicator {
-          opacity: 0.45;
-          cursor: pointer;
+        .su-dob-error {
+          color: var(--danger);
+          font-size: 13px;
+          margin-top: 8px;
+          padding-left: 2px;
+          line-height: 1.4;
         }
         .su-summary { margin-bottom: 32px; }
         .su-summary-row {
@@ -564,12 +627,13 @@ export default function SignUpPage() {
 
       <div className="su-root">
 
+        {/* brand: logo মাঝে, skylink নিচে */}
         <div className="su-brand-top">
           <Image
             src="/logo.png"
             alt="SkyLink Logo"
-            width={36}
-            height={36}
+            width={56}
+            height={56}
             priority
             className="su-logo-img"
           />
@@ -584,7 +648,7 @@ export default function SignUpPage() {
         </div>
 
         <div className="su-scroll">
-          <div className={`su-panel${animState !== "idle" ? ` ${animState}` : ""}`}>
+          <div className={`su-panel${panelClass ? ` ${panelClass}` : ""}`}>
 
             {step === 1 && (
               <>
@@ -785,16 +849,22 @@ export default function SignUpPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Date of Birth — হাতে লেখা, DD/MM/YYYY */}
                 <div className="su-input-wrap" style={{ marginTop: 4 }}>
                   <label className="su-field-label">Date of Birth</label>
                   <input
                     className="su-inp"
-                    type="date"
-                    value={form.dateOfBirth}
-                    max={new Date(Date.now() - 13 * 365.25 * 24 * 3600 * 1000).toISOString().split("T")[0]}
-                    onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
+                    value={dobRaw}
+                    onChange={handleDobChange}
                   />
+                  {dobError && <p className="su-dob-error">{dobError}</p>}
                 </div>
+
                 <div className="su-spacer" />
                 <button className="su-btn" disabled={!canProceed()} onClick={() => goToStep(6, "forward")}>
                   Next
@@ -805,14 +875,14 @@ export default function SignUpPage() {
             {step === 6 && (
               <>
                 <button className="su-back" onClick={() => goToStep(5, "back")}><BackArrow /> Back</button>
-                <div className="su-heading">Almost done!</div>
+                <div className="su-heading-light">Almost done!</div>
                 <div className="su-sub">Review your info before creating your account.</div>
                 <div className="su-summary">
                   {[
-                    { label: "Full Name", value: form.fullName },
-                    { label: "Email", value: form.email },
-                    { label: "Username", value: `@${form.username}` },
-                    { label: "Location", value: form.location },
+                    { label: "Full Name",     value: form.fullName },
+                    { label: "Email",         value: form.email },
+                    { label: "Username",      value: `@${form.username}` },
+                    { label: "Location",      value: form.location },
                     { label: "Date of Birth", value: form.dateOfBirth },
                   ].map(row => (
                     <div className="su-summary-row" key={row.label}>
