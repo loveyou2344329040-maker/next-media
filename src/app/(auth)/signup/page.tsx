@@ -3,10 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { signUpWithEmail } from "@/lib/firebase/services/authService";
-import { createUserProfile, getUserByUsername } from "@/lib/firebase/services/userService";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase/config";
 
 interface FormData {
   fullName: string;
@@ -45,7 +44,6 @@ export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [animating, setAnimating] = useState(false);
-  const [direction, setDirection] = useState<"forward" | "back">("forward");
 
   const [form, setForm] = useState<FormData>({
     fullName: "",
@@ -74,9 +72,8 @@ export default function SignUpPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  const goToStep = (next: number, dir: "forward" | "back") => {
+  const goToStep = (next: number, _dir: "forward" | "back") => {
     if (animating) return;
-    setDirection(dir);
     setAnimating(true);
     setTimeout(() => {
       setStep(next);
@@ -91,8 +88,12 @@ export default function SignUpPage() {
     }
     setUsernameStatus("checking");
     try {
-      const existing = await getUserByUsername(val);
-      setUsernameStatus(existing ? "taken" : "available");
+      const q = query(
+        collection(db, "usernames"),
+        where("username", "==", val.toLowerCase())
+      );
+      const snap = await getDocs(q);
+      setUsernameStatus(snap.empty ? "available" : "taken");
     } catch (err) {
       console.error("Username check error:", err);
       setUsernameStatus("available");
@@ -157,25 +158,33 @@ export default function SignUpPage() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const user = await signUpWithEmail(form.email, form.password, form.fullName);
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        form.email,
+        form.password
+      );
+      const uid = credential.user.uid;
 
-      await createUserProfile(user.uid, {
-        uid: user.uid,
+      await setDoc(doc(db, "users", uid), {
+        uid,
         email: form.email,
         username: form.username.toLowerCase(),
-        displayName: form.fullName,
-        photoURL: null,
-        coverPhotoURL: null,
+        fullName: form.fullName,
+        profilePhotoUrl: "",
         bio: "",
-        website: "",
         location: form.location,
+        dateOfBirth: form.dateOfBirth,
+        followers: 0,
+        following: 0,
+        postsCount: 0,
         isVerified: false,
         isPrivate: false,
-        fcmToken: null,
+        createdAt: serverTimestamp(),
       });
 
       await setDoc(doc(db, "usernames", form.username.toLowerCase()), {
-        uid: user.uid,
+        uid,
+        username: form.username.toLowerCase(),
         createdAt: serverTimestamp(),
       });
 
@@ -252,7 +261,6 @@ export default function SignUpPage() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; background: var(--bg); }
         @keyframes spin { to { transform: rotate(360deg); } }
-
         .su-root {
           min-height: 100dvh;
           background: var(--bg);
@@ -301,12 +309,9 @@ export default function SignUpPage() {
           padding: 28px 24px 40px;
           display: flex;
           flex-direction: column;
-          transition: transform 0.26s cubic-bezier(0.4,0,0.2,1), opacity 0.26s ease;
+          transition: opacity 0.26s ease;
         }
-        .su-panel.is-animating {
-          opacity: 0;
-          pointer-events: none;
-        }
+        .su-panel.is-animating { opacity: 0; pointer-events: none; }
         .su-logo-block {
           display: flex;
           flex-direction: column;
@@ -359,9 +364,7 @@ export default function SignUpPage() {
           font-family: inherit;
         }
         .su-inp::placeholder { color: var(--text-secondary); }
-        .su-inp:focus {
-          box-shadow: 0 0 0 2.5px rgba(56,189,248,0.35), var(--shadow);
-        }
+        .su-inp:focus { box-shadow: 0 0 0 2.5px rgba(56,189,248,0.35), var(--shadow); }
         .su-inp-row { position: relative; }
         .su-inp-row .su-inp { padding-right: 52px; }
         .su-eye {
@@ -394,7 +397,8 @@ export default function SignUpPage() {
         }
         .su-rule.ok { color: var(--success); }
         .su-rule-dot {
-          width: 7px; height: 7px;
+          width: 7px;
+          height: 7px;
           border-radius: 50%;
           background: currentColor;
           flex-shrink: 0;
@@ -500,14 +504,11 @@ export default function SignUpPage() {
           justify-content: center;
           gap: 8px;
         }
-        .su-btn:disabled {
-          opacity: 0.35;
-          cursor: not-allowed;
-          box-shadow: none;
-        }
+        .su-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
         .su-btn:not(:disabled):active { transform: scale(0.98); }
         .su-spinner {
-          width: 18px; height: 18px;
+          width: 18px;
+          height: 18px;
           border: 2px solid rgba(255,255,255,0.4);
           border-top-color: white;
           border-radius: 50%;
@@ -674,16 +675,36 @@ export default function SignUpPage() {
                   />
                   <div className={`su-username-status ${usernameStatus}`}>
                     {usernameStatus === "checking" && (
-                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 0.7s linear infinite" }}><path d="M21 12a9 9 0 1 1-6.22-8.56" /></svg> Checking…</>
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "spin 0.7s linear infinite" }}>
+                          <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+                        </svg>
+                        Checking…
+                      </>
                     )}
                     {usernameStatus === "available" && (
-                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg> Username Available</>
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Username Available
+                      </>
                     )}
                     {usernameStatus === "taken" && (
-                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg> Username Already Taken</>
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                        Username Already Taken
+                      </>
                     )}
                     {usernameStatus === "invalid" && form.username && (
-                      <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg> Only a–z, 0–9, _ or . (4–20 chars)</>
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                        Only a–z, 0–9, _ or . (4–20 chars)
+                      </>
                     )}
                   </div>
                 </div>
@@ -776,7 +797,10 @@ export default function SignUpPage() {
                 </div>
                 {submitError && <div className="su-error">{submitError}</div>}
                 <button className="su-btn" disabled={submitting} onClick={handleSubmit}>
-                  {submitting ? <><div className="su-spinner" /> Creating Account…</> : "Create Account"}
+                  {submitting
+                    ? <><div className="su-spinner" /> Creating Account…</>
+                    : "Create Account"
+                  }
                 </button>
               </>
             )}
